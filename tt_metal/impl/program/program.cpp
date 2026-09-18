@@ -343,6 +343,24 @@ std::string ensure_kernel_binaries(
     });
     return build_env.build_env.get_out_kernel_root_path();
 }
+
+// A borrowing kernel uses its owner's runtime arguments, so it must not supply any of its own.
+void validate_runtime_args_borrower(const KernelDescriptor& kernel, uint32_t index) {
+    const uint32_t owner = *kernel.runtime_args_owner;
+    TT_FATAL(owner < index, "Kernel {}: runtime_args_owner {} must be an earlier kernel", index, owner);
+    const auto require_none = [&](bool empty, const char* field) {
+        TT_FATAL(empty, "Kernel {} borrows runtime arguments, so it must not supply {}", index, field);
+    };
+    const auto& named = kernel.blaze_named_args;
+    require_none(kernel.runtime_args.empty(), "runtime_args");
+    require_none(kernel.common_runtime_args.empty(), "common_runtime_args");
+    require_none(
+        named.named_common_runtime_args.empty() && named.named_per_core_runtime_args.empty() &&
+            named.named_common_runtime_arg_arrays.empty() && named.named_per_core_runtime_arg_arrays.empty(),
+        "named runtime arguments");
+    require_none(kernel.buffer_bindings.empty(), "buffer_bindings");
+    require_none(kernel.common_buffer_bindings.empty(), "common_buffer_bindings");
+}
 }  // namespace
 
 namespace experimental {
@@ -428,7 +446,12 @@ Program::Program(const ProgramDescriptor& descriptor) : internal_(std::make_shar
             semaphore_descriptor.core_type);
     }
 
-    for (const auto& kernel_descriptor : descriptor.kernels) {
+    // Kernels are created in descriptor order, so a kernel's handle is its index in descriptor.kernels.
+    for (uint32_t index = 0; index < descriptor.kernels.size(); index++) {
+        const auto& kernel_descriptor = descriptor.kernels[index];
+        if (kernel_descriptor.runtime_args_owner) {
+            validate_runtime_args_borrower(kernel_descriptor, index);
+        }
         bool is_file = kernel_descriptor.source_type == KernelDescriptor::SourceType::FILE_PATH;
         std::vector<uint32_t> compile_args(
             kernel_descriptor.compile_time_args.begin(), kernel_descriptor.compile_time_args.end());
@@ -508,6 +531,10 @@ Program::Program(const ProgramDescriptor& descriptor) : internal_(std::make_shar
                 SetRuntimeArgs(*this, kernel_handle, core_coord, core_runtime_args);
             }
             SetCommonRuntimeArgs(*this, kernel_handle, kernel_descriptor.common_runtime_args);
+        }
+        if (kernel_descriptor.runtime_args_owner) {
+            internal_->get_kernel(kernel_handle)
+                ->borrow_runtime_args_from(internal_->get_kernel(*kernel_descriptor.runtime_args_owner));
         }
     }
 }

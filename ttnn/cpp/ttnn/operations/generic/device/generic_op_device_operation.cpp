@@ -65,6 +65,8 @@ ttsl::hash::hash_t compute_program_descriptor_hash(const tt::tt_metal::ProgramDe
             // partial hashing that used .size() of only 3 of 4 variants and never the names.
             tt::tt_metal::experimental::blaze::hash_named_args_schema(kernel.blaze_named_args),
             kernel.runtime_args.size(),
+            kernel.runtime_args_owner.has_value(),
+            kernel.runtime_args_owner.value_or(0),
             kernel.config.index(),
             // Under libc++, an unset processor and UNPACK hash alike inside kernel.config.
             compute && compute->processor.has_value(),

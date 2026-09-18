@@ -136,3 +136,21 @@ TEST(GenericOpHash, ComputeProcessorChangesHash) {
         ttnn::operations::generic::compute_program_descriptor_hash(unpack));
     EXPECT_NE(std::hash<ProgramDescriptor>{}(all), std::hash<ProgramDescriptor>{}(unpack));
 }
+
+TEST(GenericOpHash, RuntimeArgumentOwnershipChangesHash) {
+    using namespace tt::tt_metal;
+    KernelDescriptor kernel{
+        .kernel_source = "tests/tt_metal/tt_metal/test_kernels/compute/blank.cpp",
+        .core_ranges = CoreRangeSet(CoreRange(CoreCoord{0, 0})),
+        .config = ComputeConfigDescriptor{.processor = ComputeProcessor::UNPACK},
+    };
+    ProgramDescriptor independent{.kernels = {kernel, kernel}};
+    std::get<ComputeConfigDescriptor>(independent.kernels[1].config).processor = ComputeProcessor::MATH;
+    auto shared = independent;
+    shared.kernels[1].runtime_args_owner = 0;
+
+    EXPECT_NE(
+        ttnn::operations::generic::compute_program_descriptor_hash(independent),
+        ttnn::operations::generic::compute_program_descriptor_hash(shared));
+    EXPECT_NE(std::hash<ProgramDescriptor>{}(independent), std::hash<ProgramDescriptor>{}(shared));
+}

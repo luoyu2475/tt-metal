@@ -52,6 +52,8 @@ def test_kernel_descriptor_copy_keeps_compute_processor():
         config=ttnn.ComputeConfigDescriptor(),
     )
     original.config.processor = ttnn.ComputeProcessor.MATH
+    original.runtime_args_owner = 0
 
     copied = ttnn.KernelDescriptor(original)
     assert copied.config.processor == ttnn.ComputeProcessor.MATH
+    assert copied.runtime_args_owner == 0

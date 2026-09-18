@@ -810,6 +810,9 @@ uint64_t Kernel::compute_hash() const {
 }
 
 std::vector<uint32_t>& Kernel::runtime_args(const CoreCoord& logical_core) {
+    if (runtime_args_owner_) {
+        return runtime_args_owner_->runtime_args(logical_core);
+    }
     // TODO (abhullar): Should this check only be enabled in debug mode?
     TT_FATAL(
         logical_core.x < this->core_to_runtime_args_.size() &&
@@ -821,6 +824,9 @@ std::vector<uint32_t>& Kernel::runtime_args(const CoreCoord& logical_core) {
 }
 
 RuntimeArgsData& Kernel::runtime_args_data(const CoreCoord& logical_core) {
+    if (runtime_args_owner_) {
+        return runtime_args_owner_->runtime_args_data(logical_core);
+    }
     // TODO (abhullar): Should this check only be enabled in debug mode?
     TT_FATAL(
         logical_core.x < this->core_to_runtime_args_.size() &&
@@ -831,13 +837,39 @@ RuntimeArgsData& Kernel::runtime_args_data(const CoreCoord& logical_core) {
     return this->core_to_runtime_args_data_[logical_core.x][logical_core.y];
 }
 
-std::vector<std::vector<std::vector<uint32_t>>>& Kernel::runtime_args() { return this->core_to_runtime_args_; }
+std::vector<std::vector<std::vector<uint32_t>>>& Kernel::runtime_args() {
+    return runtime_args_owner_ ? runtime_args_owner_->runtime_args() : core_to_runtime_args_;
+}
 
-std::vector<std::vector<RuntimeArgsData>>& Kernel::runtime_args_data() { return this->core_to_runtime_args_data_; }
+std::vector<std::vector<RuntimeArgsData>>& Kernel::runtime_args_data() {
+    return runtime_args_owner_ ? runtime_args_owner_->runtime_args_data() : core_to_runtime_args_data_;
+}
 
-std::vector<uint32_t>& Kernel::common_runtime_args() { return this->common_runtime_args_; }
+std::vector<uint32_t>& Kernel::common_runtime_args() {
+    return runtime_args_owner_ ? runtime_args_owner_->common_runtime_args() : common_runtime_args_;
+}
 
-RuntimeArgsData& Kernel::common_runtime_args_data() { return this->common_runtime_args_data_; }
+RuntimeArgsData& Kernel::common_runtime_args_data() {
+    return runtime_args_owner_ ? runtime_args_owner_->common_runtime_args_data() : common_runtime_args_data_;
+}
+
+void Kernel::borrow_runtime_args_from(std::shared_ptr<Kernel> owner) {
+    const auto processor = [](const Kernel& kernel) -> std::optional<ComputeProcessor> {
+        const auto config = kernel.config();
+        const auto* compute = std::get_if<ComputeConfig>(&config);
+        return compute ? compute->processor : std::nullopt;
+    };
+    const auto borrower = processor(*this);
+    TT_FATAL(processor(*owner) == ComputeProcessor::UNPACK, "A runtime-argument owner must be an UNPACK kernel");
+    TT_FATAL(
+        borrower == ComputeProcessor::MATH || borrower == ComputeProcessor::PACK,
+        "A runtime-argument borrower must be a MATH or PACK kernel");
+    TT_FATAL(
+        logical_cores() == owner->logical_cores(),
+        "A runtime-argument borrower must be on the same cores as its owner");
+    named_runtime_arg_namespaces_ = owner->named_runtime_arg_namespaces();
+    runtime_args_owner_ = std::move(owner);
+}
 
 // Enforced ceiling on the combined (unique + common) runtime-arg count for a Tensix kernel. Args above
 // max_runtime_args are dispatched via CQ_DISPATCH_CMD_WRITE_PACKED_LARGE_UNICAST, which sends a single core's
@@ -897,6 +929,9 @@ void Kernel::validate_runtime_args_size(
 }
 
 void Kernel::set_runtime_args(const CoreCoord& logical_core, ttsl::Span<const uint32_t> runtime_args) {
+    if (runtime_args_owner_) {
+        return runtime_args_owner_->set_runtime_args(logical_core, runtime_args);
+    }
     // TODO (abhullar): If we don't include this check then user can write runtime args to a core that the kernel is not
     // placed on.
     //                  Should this check only be enabled in debug mode?
@@ -957,6 +992,9 @@ void Kernel::set_runtime_args(const CoreCoord& logical_core, ttsl::Span<const ui
 }
 
 void Kernel::set_common_runtime_args(ttsl::Span<const uint32_t> common_runtime_args) {
+    if (runtime_args_owner_) {
+        return runtime_args_owner_->set_common_runtime_args(common_runtime_args);
+    }
     auto& set_rt_args = this->common_runtime_args_;
     TT_FATAL(
         set_rt_args.empty(),
