@@ -133,6 +133,8 @@ void EnqueueMeshWorkload(MeshCommandQueue& mesh_cq, MeshWorkload& mesh_workload,
 
 void EventSynchronize(const MeshEvent& event) {
     if (!event.device()->impl().metal_env().get_rtoptions().get_fast_dispatch()) {
+        // Slow dispatch records no event, so wait for the recording queue's workloads to finish.
+        event.device()->mesh_command_queue(event.impl().mesh_cq_id()).enqueue_wait_for_event(event);
         return;
     }
     for (const auto& coord : event.impl().device_range()) {
@@ -189,9 +191,7 @@ MeshTraceId BeginTraceCapture(MeshDevice* device, uint8_t cq_id) {
     return device->begin_mesh_trace(device->mesh_command_queue(cq_id));
 }
 
-void Finish(MeshCommandQueue& mesh_cq, ttsl::Span<const SubDeviceId> sub_device_ids) {
-    mesh_cq.finish(sub_device_ids);
-}
+void Finish(MeshCommandQueue& mesh_cq, ttsl::Span<const SubDeviceId> sub_device_ids) { mesh_cq.finish(sub_device_ids); }
 
 bool UsingDistributedEnvironment() {
     using multihost::DistributedContext;
