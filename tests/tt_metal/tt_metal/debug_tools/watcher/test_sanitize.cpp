@@ -817,6 +817,10 @@ void RunTestEth(
     const std::shared_ptr<distributed::MeshDevice>& mesh_device,
     watcher_features_t feature) {
     auto* device = mesh_device->get_devices()[0];
+    if (not fixture->IsSlowDispatch()) {
+        GTEST_SKIP() << "fast dispatch to active ethernet has been removed";
+        return;
+    }
     if (fixture->IsSlowDispatch()) {
         GTEST_SKIP();
     }
