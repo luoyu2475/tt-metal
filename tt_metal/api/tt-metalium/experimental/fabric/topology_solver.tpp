@@ -2866,7 +2866,10 @@ bool DFSSearchEngine<TargetNode, GlobalNode>::dfs_recursive(
         // Hard host-group cap: skip a candidate that would open a NEW host group beyond the cap.
         if (host_cap_active && global_idx < global_to_host.size()) {
             const int grp = global_to_host[global_idx];
-            if (grp >= 0 && !occupied_host_groups.contains(grp) && occupied_host_groups.size() >= host_group_cap) {
+            if (grp < 0) {
+                continue;  // unlabelled candidate (in no host group, e.g. spans hosts): not usable under the cap
+            }
+            if (!occupied_host_groups.contains(grp) && occupied_host_groups.size() >= host_group_cap) {
                 continue;  // would exceed at-most-k occupied host groups
             }
         }
@@ -3333,8 +3336,10 @@ bool DFSSearchEngine<TargetNode, GlobalNode>::enumerate_mappings(
             // Hard host-group cap: skip a candidate that would open a NEW host group beyond the cap.
             if (host_cap_active && global_idx < global_to_host.size()) {
                 const int grp = global_to_host[global_idx];
-                if (grp >= 0 && !occupied_host_groups.contains(grp) &&
-                    occupied_host_groups.size() >= host_group_cap) {
+                if (grp < 0) {
+                    continue;  // unlabelled candidate (in no host group, e.g. spans hosts): not usable under the cap
+                }
+                if (!occupied_host_groups.contains(grp) && occupied_host_groups.size() >= host_group_cap) {
                     continue;  // would exceed at-most-k occupied host groups
                 }
             }
