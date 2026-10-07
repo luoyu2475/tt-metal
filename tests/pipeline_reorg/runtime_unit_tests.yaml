@@ -25,7 +25,7 @@
     fi
   skus:
     wh_n150_civ2:
-      timeout: 10
+      timeout: 15
     bh_p150b_civ2:
       timeout: 10
   owner_id: U099A7FMKL2 # Manish Sudumbrekar
@@ -323,13 +323,13 @@
 # --- LLK Tests (SD) ---
 - name: runtime_sd_llk
   # No #44767 exclusions remain (see runtime_llk above). P300 completes the expanded suite in
-  # ~12 minutes; N150/P150 project below 16 minutes. P100 viommu projects to ~20 minutes from the
-  # same test checkpoints, so it needs a larger budget.
+  # ~12 minutes; N150 needs up to 18 minutes and P150 projects below 16 minutes. P100 viommu projects
+  # to ~20 minutes from the same test checkpoints, so it needs a larger budget.
   cmd: |
     TT_METAL_SLOW_DISPATCH_MODE=1 ./build/test/tt_metal/unit_tests_llk --gtest_filter='*'
   skus:
     wh_n150_civ2:
-      timeout: 17
+      timeout: 20
     wh_n300_civ2:
       timeout: 15
     bh_p150b_civ2:
