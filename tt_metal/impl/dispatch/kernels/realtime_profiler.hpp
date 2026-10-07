@@ -66,6 +66,19 @@ bool program_id_fifo_pop(volatile tt_l1_ptr realtime_profiler_msg_t* msg, uint32
 // is_start: true for kernel start timestamp, false for kernel end timestamp
 FORCE_INLINE
 void record_realtime_timestamp(volatile tt_l1_ptr realtime_profiler_msg_t* msg, bool is_start) {
+    // The profiler core receives buffer notifications through a single mailbox. Do not overwrite that mailbox with
+    // the next notification until it has copied the previous buffer and acknowledged it. This normally does not
+    // stall dispatch; it only applies backpressure when profiling falls behind.
+    if (is_start && msg->realtime_profiler_state != REALTIME_PROFILER_STATE_IDLE) {
+        // sync_request is unused on the dispatch-core copy of this message; the profiler-core copy remains the
+        // host/firmware sync handshake. Reuse the dispatch-core word as the consumer acknowledgement without growing
+        // or shifting the shared ABI.
+        while (msg->sync_request == 0) {
+            invalidate_l1_cache();
+        }
+        msg->sync_request = 0;
+    }
+
     // Read wall clock - LOW first to latch HIGH
     volatile tt_reg_ptr uint32_t* p_reg = reinterpret_cast<volatile tt_reg_ptr uint32_t*>(RISCV_DEBUG_REG_WALL_CLOCK_L);
     uint32_t time_lo = p_reg[WALL_CLOCK_LOW_INDEX];

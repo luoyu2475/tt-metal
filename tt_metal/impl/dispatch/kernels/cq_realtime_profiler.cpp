@@ -24,6 +24,7 @@ constexpr uint32_t realtime_profiler_timestamp_size = 2 * sizeof(realtime_profil
 // DISPATCH_CORE_NOC_Y  - NOC Y coordinate of dispatch_s core
 // DISPATCH_DATA_ADDR_A - Address of kernel_start_a in dispatch_s's L1 mailbox
 // DISPATCH_DATA_ADDR_B - Address of kernel_start_b in dispatch_s's L1 mailbox
+// DISPATCH_ACK_ADDR    - Address of the acknowledgement word in dispatch_s's L1 mailbox
 // RING_BUFFER_ADDR     - L1 address of the shared ring buffer
 
 // L1 region carved by DispatchMemMap (CommandQueueDeviceAddrType::REALTIME_PROFILER_MSG) on this
@@ -57,6 +58,9 @@ __attribute__((noinline)) void realtime_profiler_read_and_enqueue(bool buffer_a)
     if (id != REALTIME_PROFILER_UNPROFILED_PROGRAM_HOST_ID) {
         ring_buffer->write_index++;
     }
+
+    const uint64_t dispatch_ack_addr = get_noc_addr(DISPATCH_CORE_NOC_X, DISPATCH_CORE_NOC_Y, DISPATCH_ACK_ADDR);
+    noc_inline_dw_write(dispatch_ack_addr, 1);
 }
 
 // Handle sync requests from host: capture device timestamp and enqueue

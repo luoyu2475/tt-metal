@@ -389,7 +389,7 @@ void RealtimeProfilerManager::write_sync_request(RealtimeProfilerManager::Device
         dev_state.device, dev_state.realtime_profiler_core, dev_state.sync_request_addr, data, CoreType::WORKER);
 }
 
-void RealtimeProfilerManager::start_finish_syncs(std::chrono::steady_clock::time_point now) {
+void RealtimeProfilerManager::start_finish_syncs(std::chrono::steady_clock::time_point now, bool bypass_throttle) {
     if (!finish_sync_requested_.load(std::memory_order_acquire)) {
         return;
     }
@@ -401,7 +401,7 @@ void RealtimeProfilerManager::start_finish_syncs(std::chrono::steady_clock::time
         }
         const bool interval_elapsed = !dev_state.last_finish_sync_at.has_value() ||
                                       now - *dev_state.last_finish_sync_at >= kRtProfilerMinSyncInterval;
-        if (!interval_elapsed && !dev_state.pending_first_unthrottled_finish_sync) {
+        if (!bypass_throttle && !interval_elapsed && !dev_state.pending_first_unthrottled_finish_sync) {
             continue;
         }
         try {
@@ -458,7 +458,8 @@ void RealtimeProfilerManager::advance_finish_sync(DeviceState& dev_state, std::c
 
 void RealtimeProfilerManager::service_finish_sync(std::chrono::steady_clock::time_point now, bool allow_start) {
     if (allow_start) {
-        start_finish_syncs(now);
+        const bool bypass_throttle = finish_sync_bypass_throttle_requested_.exchange(false, std::memory_order_acq_rel);
+        start_finish_syncs(now, bypass_throttle);
     }
     if (!finish_sync_busy_.load(std::memory_order_acquire)) {
         return;
@@ -711,6 +712,7 @@ void RealtimeProfilerManager::initialize_devices(const std::shared_ptr<MeshDevic
             uint32_t dispatch_core_noc_y = 0;
             uint32_t dispatch_data_addr_a = 0;
             uint32_t dispatch_data_addr_b = 0;
+            uint32_t dispatch_ack_addr = 0;
             if (dispatch_core_manager.is_dispatcher_s_core_allocated(device_id, 0, 0)) {
                 const tt_cxy_pair& dispatch_s_cxy = dispatch_core_manager.dispatcher_s_core(device_id, 0, 0);
                 CoreCoord dispatch_s_virtual = device->virtual_core_from_logical_core(
@@ -724,6 +726,9 @@ void RealtimeProfilerManager::initialize_devices(const std::shared_ptr<MeshDevic
                     realtime_profiler_msgs::realtime_profiler_msg_t::Field::kernel_start_b);
                 dispatch_data_addr_a = realtime_profiler_base_addr + kernel_start_a_offset;
                 dispatch_data_addr_b = realtime_profiler_base_addr + kernel_start_b_offset;
+                // sync_request is the host sync word on the profiler core. Its dispatch-core copy is otherwise unused,
+                // so the profiler reader uses that same offset to acknowledge timestamp-buffer consumption.
+                dispatch_ack_addr = realtime_profiler_base_addr + sync_request_offset;
             }
 
             DataMovementConfig brisc_config;
@@ -733,6 +738,7 @@ void RealtimeProfilerManager::initialize_devices(const std::shared_ptr<MeshDevic
             brisc_config.defines["DISPATCH_CORE_NOC_Y"] = std::to_string(dispatch_core_noc_y);
             brisc_config.defines["DISPATCH_DATA_ADDR_A"] = std::to_string(dispatch_data_addr_a);
             brisc_config.defines["DISPATCH_DATA_ADDR_B"] = std::to_string(dispatch_data_addr_b);
+            brisc_config.defines["DISPATCH_ACK_ADDR"] = std::to_string(dispatch_ack_addr);
             brisc_config.defines["RING_BUFFER_ADDR"] = std::to_string(ring_buffer_addr);
             brisc_config.defines["REALTIME_PROFILER_MSG_ADDR"] = std::to_string(realtime_profiler_base_addr);
             CreateKernel(
@@ -1522,6 +1528,9 @@ void RealtimeProfilerManager::trigger_sync_check(bool bypass_throttle) {
     }
     last_sync_request_at_.store(now.time_since_epoch().count(), std::memory_order_relaxed);
 
+    if (bypass_throttle) {
+        finish_sync_bypass_throttle_requested_.store(true, std::memory_order_release);
+    }
     finish_sync_requested_.store(true, std::memory_order_release);
     const auto deadline = now + kFinishSyncRequestDelay + kFinishSyncResponseTimeout + kFinishSyncWaitSlack;
     {

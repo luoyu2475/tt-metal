@@ -163,7 +163,7 @@ private:
     enum SyncRequest : uint32_t { Clear = 0, Set = 1 };
     static void write_sync_request(DeviceState& dev_state, SyncRequest value);
     [[nodiscard]] bool has_active_finish_sync() const;
-    void start_finish_syncs(std::chrono::steady_clock::time_point now);
+    void start_finish_syncs(std::chrono::steady_clock::time_point now, bool bypass_throttle);
     void advance_finish_sync(DeviceState& dev_state, std::chrono::steady_clock::time_point now);
     void service_finish_sync(std::chrono::steady_clock::time_point now, bool allow_start);
     void notify_finish_sync_waiters();
@@ -181,6 +181,7 @@ private:
     std::thread receiver_thread_;
     std::atomic<bool> stop_{false};
     std::atomic<bool> finish_sync_requested_{false};
+    std::atomic<bool> finish_sync_bypass_throttle_requested_{false};
     std::atomic<bool> finish_sync_busy_{false};
     std::atomic<std::chrono::steady_clock::rep> last_sync_request_at_{0};
 
