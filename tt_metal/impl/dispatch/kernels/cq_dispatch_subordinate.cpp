@@ -419,6 +419,17 @@ bool realtime_profiler_record_ring_full(uint32_t next_wr_idx) {
     return ((next_wr_idx - rt_record_rd_idx) & REALTIME_PROFILER_RECORD_WR_IDX_MASK) >= REALTIME_PROFILER_RECORD_SLOTS;
 }
 
+// Low word of the clock that times a wait for a free record slot. The Quasar dispatch engine has no
+// Tensix wall-clock register; its DM cores count cycles with rdcycle.
+FORCE_INLINE
+uint32_t record_wait_clock_low() {
+#if defined(ARCH_QUASAR)
+    return get_timestamp_32b();
+#else
+    return reinterpret_cast<volatile tt_reg_ptr uint32_t*>(RISCV_DEBUG_REG_WALL_CLOCK_L)[WALL_CLOCK_LOW_INDEX];
+#endif
+}
+
 // Publish the open record slot to the RT-profiler BRISC and open the next one (record ring protocol in
 // realtime_profiler_msgs.h). Lossless: while every other slot is still unread, wait rather than reuse one.
 // A slot's stale end time is fixed up by the BRISC (see realtime_profiler_read_and_enqueue), not here.
@@ -432,9 +443,7 @@ void publish_realtime_profiler_record(volatile tt_l1_ptr realtime_profiler_msg_t
         rt_record_rd_idx = msg->record_rd_idx;
         if (realtime_profiler_record_ring_full(next_wr_idx)) {
             msg->record_full_wait_count = msg->record_full_wait_count + 1;
-            volatile tt_reg_ptr uint32_t* wall_clock =
-                reinterpret_cast<volatile tt_reg_ptr uint32_t*>(RISCV_DEBUG_REG_WALL_CLOCK_L);
-            const uint32_t wait_start = wall_clock[WALL_CLOCK_LOW_INDEX];
+            const uint32_t wait_start = record_wait_clock_low();
             WAYPOINT("RPFW");
             do {
                 invalidate_l1_cache();
@@ -443,7 +452,7 @@ void publish_realtime_profiler_record(volatile tt_l1_ptr realtime_profiler_msg_t
             WAYPOINT("RPFD");
             // Report the wait in-band on the record about to be published; the BRISC turns it into a
             // dispatch-stall marker for the host. 0 means "no wait", so a wait is never stored as 0.
-            const uint32_t wait_cycles = wall_clock[WALL_CLOCK_LOW_INDEX] - wait_start;
+            const uint32_t wait_cycles = record_wait_clock_low() - wait_start;
             msg->records[rt_record_wr_idx & (REALTIME_PROFILER_RECORD_SLOTS - 1)].kernel_end.header =
                 wait_cycles != 0 ? wait_cycles : 1;
         }
