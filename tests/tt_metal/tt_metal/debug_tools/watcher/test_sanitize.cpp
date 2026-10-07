@@ -812,27 +812,6 @@ void RunTestOnCore(
     }
 }
 
-void RunTestEth(
-    MeshWatcherFixture* fixture,
-    const std::shared_ptr<distributed::MeshDevice>& mesh_device,
-    watcher_features_t feature) {
-    auto* device = mesh_device->get_devices()[0];
-    if (not fixture->IsSlowDispatch()) {
-        GTEST_SKIP() << "fast dispatch to active ethernet has been removed";
-        return;
-    }
-    if (fixture->IsSlowDispatch()) {
-        GTEST_SKIP();
-    }
-    // Run on the first ethernet core (if there are any).
-    if (device->get_active_ethernet_cores(true).empty()) {
-        log_info(LogTest, "Skipping this test since device has no active ethernet cores.");
-        GTEST_SKIP();
-    }
-    CoreCoord core = *(device->get_active_ethernet_cores(true).begin());
-    RunTestOnCore(fixture, mesh_device, core, true, feature);
-}
-
 void RunTestIEth(
     MeshWatcherFixture* fixture,
     const std::shared_ptr<distributed::MeshDevice>& mesh_device,
@@ -965,30 +944,6 @@ TEST_F(MeshWatcherFixture, TensixTestWatcherSanitizeNOCInvalidTxnId) {
         this->devices_[0]);
 }
 
-TEST_F(MeshWatcherFixture, ActiveEthTestWatcherSanitizeEth) {
-    this->RunTestOnDevice(
-        [](MeshWatcherFixture* fixture, const std::shared_ptr<distributed::MeshDevice>& mesh_device) {
-            RunTestEth(fixture, mesh_device, SanitizeNOCAddress);
-        },
-        this->devices_[0]);
-}
-
-TEST_F(MeshWatcherFixture, ActiveEthTestWatcherSanitizeNOCMailboxWrite) {
-    this->RunTestOnDevice(
-        [](MeshWatcherFixture* fixture, const std::shared_ptr<distributed::MeshDevice>& mesh_device) {
-            RunTestEth(fixture, mesh_device, SanitizeNOCMailboxWrite);
-        },
-        this->devices_[0]);
-}
-
-TEST_F(MeshWatcherFixture, ActiveEthTestWatcherSanitizeNOCInlineWriteDram) {
-    this->RunTestOnDevice(
-        [](MeshWatcherFixture* fixture, const std::shared_ptr<distributed::MeshDevice>& mesh_device) {
-            RunTestEth(fixture, mesh_device, SanitizeNOCInlineWriteDram);
-        },
-        this->devices_[0]);
-}
-
 TEST_F(MeshWatcherFixture, IdleEthTestWatcherSanitizeIEth) {
     if (!this->IsSlowDispatch()) {
         log_info(tt::LogTest, "FD-on-idle-eth not supported.");
@@ -1036,30 +991,6 @@ TEST_F(MeshWatcherFixture, TensixTestWatcherSanitizeL1OverflowStraddle) {
         [](MeshWatcherFixture* fixture, const std::shared_ptr<distributed::MeshDevice>& mesh_device) {
             CoreCoord core{0, 0};
             RunTestOnCore(fixture, mesh_device, core, false, SanitizeL1OverflowStraddle);
-        },
-        this->devices_[0]);
-}
-
-TEST_F(MeshWatcherFixture, ActiveEthTestWatcherSanitizeL1Overflow) {
-    this->RunTestOnDevice(
-        [](MeshWatcherFixture* fixture, const std::shared_ptr<distributed::MeshDevice>& mesh_device) {
-            RunTestEth(fixture, mesh_device, SanitizeL1Overflow);
-        },
-        this->devices_[0]);
-}
-
-TEST_F(MeshWatcherFixture, ActiveEthTestWatcherSanitizeEthSrcL1Overflow) {
-    this->RunTestOnDevice(
-        [](MeshWatcherFixture* fixture, const std::shared_ptr<distributed::MeshDevice>& mesh_device) {
-            RunTestEth(fixture, mesh_device, SanitizeEthSrcL1Overflow);
-        },
-        this->devices_[0]);
-}
-
-TEST_F(MeshWatcherFixture, ActiveEthTestWatcherSanitizeEthDestL1Overflow) {
-    this->RunTestOnDevice(
-        [](MeshWatcherFixture* fixture, const std::shared_ptr<distributed::MeshDevice>& mesh_device) {
-            RunTestEth(fixture, mesh_device, SanitizeEthDestL1Overflow);
         },
         this->devices_[0]);
 }
