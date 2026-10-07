@@ -65,14 +65,14 @@ inline void pack_compute_activation<ttnn::experimental::prim::detail::MoEActivat
         DST_SYNC_MODE,
         DST_ACCUM_MODE,
         calculate_silu,
-        (false /*is_fp32_dest_acc_en*/, 8 /*ITERATIONS*/),
+        (DST_ACCUM_MODE, 8 /*ITERATIONS*/),
         0 /*DST_IDX*/,
         ::ckernel::VectorMode::RC));
     PACK(SFPU_UNARY_CALL(
         DST_SYNC_MODE,
         DST_ACCUM_MODE,
         calculate_silu,
-        (false /*is_fp32_dest_acc_en*/, 8 /*ITERATIONS*/),
+        (DST_ACCUM_MODE, 8 /*ITERATIONS*/),
         2 /*DST_IDX*/,
         ::ckernel::VectorMode::RC));
 
@@ -98,8 +98,8 @@ inline void pack_compute_activation<ttnn::experimental::prim::detail::MoEActivat
 
 template <>
 inline void pack_compute_activation<ttnn::experimental::prim::detail::MoEActivationFunction::SWIGLU>() {
-    PACK((llk_math_eltwise_binary_sfpu_swiglu<false>(0, 1, 0)));
-    PACK((llk_math_eltwise_binary_sfpu_swiglu<false>(2, 3, 2)));
+    PACK((llk_math_eltwise_binary_sfpu_swiglu<DST_ACCUM_MODE>(0, 1, 0)));
+    PACK((llk_math_eltwise_binary_sfpu_swiglu<DST_ACCUM_MODE>(2, 3, 2)));
 };
 
 #ifdef TRISC_PACK
@@ -113,8 +113,8 @@ struct ClampedSiluConfig {
 
 template <>
 inline void pack_compute_activation<ttnn::experimental::prim::detail::MoEActivationFunction::CLAMPED_SILU>() {
-    PACK((llk_math_eltwise_binary_sfpu_swiglu<false, ClampedSiluConfig, /*AddUpBias=*/false>(0, 1, 0)));
-    PACK((llk_math_eltwise_binary_sfpu_swiglu<false, ClampedSiluConfig, /*AddUpBias=*/false>(2, 3, 2)));
+    PACK((llk_math_eltwise_binary_sfpu_swiglu<DST_ACCUM_MODE, ClampedSiluConfig, /*AddUpBias=*/false>(0, 1, 0)));
+    PACK((llk_math_eltwise_binary_sfpu_swiglu<DST_ACCUM_MODE, ClampedSiluConfig, /*AddUpBias=*/false>(2, 3, 2)));
 };
 
 template <>
@@ -124,19 +124,19 @@ inline void pack_compute_activation<ttnn::experimental::prim::detail::MoEActivat
     // for ring sizes where ceil(Nt/ring) is odd — e.g. gemma at ring=8) the next iteration's
     // gelu reads a stale LUT and produces garbage. Re-init the LUT here so every gelu is valid.
     // SILU/SWIGLU don't use this LUT, so they keep their cheaper once-per-chunk init.
-    PACK((llk_math_eltwise_unary_sfpu_init<SfpuType::gelu>(ckernel::sfpu::gelu_init<true, false>)));
+    PACK((llk_math_eltwise_unary_sfpu_init<SfpuType::gelu>(ckernel::sfpu::gelu_init<true, DST_ACCUM_MODE>)));
     PACK(SFPU_UNARY_CALL(
         DST_SYNC_MODE,
         DST_ACCUM_MODE,
         calculate_gelu,
-        (true /*APPROXIMATE*/, false /*is_fp32_dest_acc_en*/, 8 /*ITERATIONS*/),
+        (true /*APPROXIMATE*/, DST_ACCUM_MODE, 8 /*ITERATIONS*/),
         0 /*DST_IDX*/,
         ::ckernel::VectorMode::RC));
     PACK(SFPU_UNARY_CALL(
         DST_SYNC_MODE,
         DST_ACCUM_MODE,
         calculate_gelu,
-        (true /*APPROXIMATE*/, false /*is_fp32_dest_acc_en*/, 8 /*ITERATIONS*/),
+        (true /*APPROXIMATE*/, DST_ACCUM_MODE, 8 /*ITERATIONS*/),
         2 /*DST_IDX*/,
         ::ckernel::VectorMode::RC));
 
