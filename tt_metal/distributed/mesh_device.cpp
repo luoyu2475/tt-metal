@@ -219,7 +219,7 @@ const std::map<ChipId, IDevice*>& MeshDeviceImpl::ScopedDevices::opened_local_de
 const std::vector<MaybeRemote<IDevice*>>& MeshDeviceImpl::ScopedDevices::root_devices() const { return devices_; }
 
 uint8_t MeshDeviceImpl::num_hw_cqs() const {
-    if (view_->get_devices().empty()) {
+    if (view_->impl().get_devices().empty()) {
         return 0;
     }
     return validate_and_get_reference_value(
@@ -236,7 +236,7 @@ bool MeshDeviceImpl::is_initialized() const {
         return false;
     }
     // Has to report as initialized so that teardown runs for inactive mesh devices.
-    if (view_->get_devices().empty()) {
+    if (view_->impl().get_devices().empty()) {
         return true;
     }
     return validate_and_get_reference_value(
@@ -248,7 +248,7 @@ bool MeshDeviceImpl::is_remote_only() const {
     // This happens when the mesh contains only devices on remote hosts in a multi-host setup.
     // view_ is guaranteed non-null after construction (all ctors require a MeshDeviceView).
     TT_FATAL(view_ != nullptr, "MeshDeviceImpl::is_remote_only() called before view_ is initialized");
-    return is_internal_state_initialized && view_->get_devices().empty();
+    return is_internal_state_initialized && view_->impl().get_devices().empty();
 }
 
 uint32_t MeshDeviceImpl::l1_size_per_core() const {
@@ -771,7 +771,7 @@ std::shared_ptr<MeshDevice> MeshDeviceImpl::create_submesh(
         allocator_config.l1_bank_remap);
 
     // TODO #20966: Remove these calls
-    if (!submesh->pimpl_->get_view().get_devices().empty()) {
+    if (!submesh->pimpl_->get_view().impl().get_devices().empty()) {
         for (auto* device : submesh->pimpl_->get_devices()) {
             dynamic_cast<Device*>(device)->set_mesh_device(submesh);
         }
@@ -779,7 +779,7 @@ std::shared_ptr<MeshDevice> MeshDeviceImpl::create_submesh(
 
     submeshes_.push_back(submesh);
     log_trace(LogMetal, "Instantiating submesh {}: {} with offset: {}", submesh->pimpl_->id(), submesh_shape, offset);
-    if (!submesh->pimpl_->get_view().get_devices().empty()) {
+    if (!submesh->pimpl_->get_view().impl().get_devices().empty()) {
         log_trace(
             LogMetal,
             "Submesh {} instantiated with {} devices",
@@ -832,7 +832,7 @@ IDevice* MeshDeviceImpl::get_device(ChipId physical_device_id) const {
 }
 
 std::vector<IDevice*> MeshDeviceImpl::get_devices() const {
-    auto devices = view_->get_devices();
+    auto devices = view_->impl().get_devices();
     // A mesh legitimately returns no *local* devices when its view spans device slots that
     // are all remote — e.g. a create_submeshes() tile whose devices live on another host/rank.
     // Various teardown paths iterate get_devices() over such submeshes, so only assert when
@@ -867,7 +867,7 @@ MeshCommandQueue& MeshDeviceImpl::mesh_command_queue(std::optional<uint8_t> cq_i
     auto id = cq_id.value_or(GetCurrentCommandQueueIdForThread());
 
     // If the mesh device has no local devices, return the dummy mesh command queue.
-    if (this->get_view().get_devices().empty()) {
+    if (this->get_view().impl().get_devices().empty()) {
         return *mesh_command_queues_[0];
     }
 
@@ -881,7 +881,7 @@ MeshCommandQueueBase& MeshDeviceImpl::mesh_command_queue_base(std::optional<uint
     auto id = cq_id.value_or(GetCurrentCommandQueueIdForThread());
 
     // If the mesh device has no local devices, return the dummy mesh command queue.
-    if (this->get_view().get_devices().empty()) {
+    if (this->get_view().impl().get_devices().empty()) {
         return *mesh_command_queues_[0];
     }
 
@@ -1027,7 +1027,7 @@ bool MeshDeviceImpl::close_impl(MeshDevice* pimpl_wrapper) {
         }
 
         // TODO #20966: Remove these calls
-        for (auto* device : view_->get_devices()) {
+        for (auto* device : view_->impl().get_devices()) {
             dynamic_cast<Device*>(device)->set_mesh_device(parent_mesh_);
         }
 
@@ -1062,7 +1062,7 @@ bool MeshDeviceImpl::close_impl(MeshDevice* pimpl_wrapper) {
             }
         }
 
-        for (auto* device : view_->get_devices()) {
+        for (auto* device : view_->impl().get_devices()) {
             if (auto* physical_device = dynamic_cast<Device*>(device)) {
                 // Ensure slow dispatch is disabled regardless of current state
                 physical_device->set_smc_dispatch_telemetry_slow_dispatch_enabled(false);
@@ -1674,7 +1674,7 @@ bool MeshDeviceImpl::initialize_impl(
     TT_FATAL(!this->is_initialized(), "MeshDevice is already initialized!");
 
     // If the mesh device has no local devices, do not attempt to initialize it.
-    if (view_->get_devices().empty()) {
+    if (view_->impl().get_devices().empty()) {
         active_distributed_context_ = distributed_context_->split(
             distributed::multihost::Color(1), distributed::multihost::Key(*distributed_context_->rank()));
         mesh_command_queues_.push_back(
@@ -2212,8 +2212,6 @@ void MeshDevice::reset_sub_device_stall_group() { pimpl_->reset_sub_device_stall
 uint32_t MeshDevice::num_sub_devices() const { return pimpl_->num_sub_devices(); }
 bool MeshDevice::is_mmio_capable() const { return pimpl_->is_mmio_capable(); }
 std::shared_ptr<distributed::MeshDevice> MeshDevice::get_mesh_device() { return shared_from_this(); }
-std::vector<IDevice*> MeshDevice::get_devices() const { return pimpl_->get_devices(); }
-IDevice* MeshDevice::get_device(ChipId physical_device_id) const { return pimpl_->get_device(physical_device_id); }
 IDevice* MeshDevice::get_device(const MeshCoordinate& coord) const { return pimpl_->get_device(coord); }
 tt_fabric::FabricNodeId MeshDevice::get_fabric_node_id(const MeshCoordinate& coord) const {
     return pimpl_->get_fabric_node_id(coord);
@@ -2222,7 +2220,6 @@ DeviceIds MeshDevice::get_device_ids() const { return pimpl_->get_device_ids(); 
 size_t MeshDevice::num_devices() const { return pimpl_->num_devices(); }
 size_t MeshDevice::num_rows() const { return pimpl_->num_rows(); }
 size_t MeshDevice::num_cols() const { return pimpl_->num_cols(); }
-IDevice* MeshDevice::get_device(size_t row_idx, size_t col_idx) const { return pimpl_->get_device(row_idx, col_idx); }
 bool MeshDevice::is_local(const MeshCoordinate& coord) const { return pimpl_->is_local(coord); }
 const MeshShape& MeshDevice::shape() const { return pimpl_->shape(); }
 void MeshDevice::reshape(const MeshShape& new_shape) { pimpl_->reshape(new_shape); }

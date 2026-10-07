@@ -10,6 +10,7 @@
 #include "device.hpp"
 #include "mesh_device.hpp"
 #include "mesh_device_impl.hpp"
+#include "mesh_device_view_impl.hpp"
 #include "mesh_event_impl.hpp"
 #include "mesh_workload_impl.hpp"
 #include "tt-metalium/program.hpp"
@@ -26,7 +27,7 @@ namespace tt::tt_metal::distributed {
 
 void EnqueueMeshWorkload(MeshCommandQueue& mesh_cq, MeshWorkload& mesh_workload, bool blocking) {
     // Short-circuit for inactive MeshDevices (no-op)
-    if (mesh_cq.device()->get_view().get_devices().empty()) {
+    if (mesh_cq.device()->get_view().impl().get_devices().empty()) {
         return;
     }
 

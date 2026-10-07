@@ -227,12 +227,6 @@ public:
     // A MeshDevice is a collection of devices arranged in a 2D grid.
     // The type parameter allows the caller to specify how to linearize the devices in the mesh.
 
-    // Returns the devices in the mesh in row-major order.
-    std::vector<IDevice*> get_devices() const;
-    [[deprecated(
-        "Deprecated, retrieving physical devices can fail in distributed contexts. This will be removed after "
-        "28-02-2026.")]]
-    IDevice* get_device(ChipId physical_device_id) const;
     [[deprecated(
         "Deprecated, retrieving physical devices can fail in distributed contexts. This will be removed after "
         "28-02-2026.")]]
@@ -247,7 +241,6 @@ public:
     // TODO: #17477 - Remove the methods that assume 2D mesh.
     size_t num_rows() const;
     size_t num_cols() const;
-    IDevice* get_device(size_t row_idx, size_t col_idx) const;
 
     // Returns true if the coordinate is local to this mesh device.
     // Throws if the coordinate is out of bounds of this mesh device.

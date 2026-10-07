@@ -40,6 +40,7 @@
 #include <tt_stl/span.hpp>
 #include <umd/device/types/xy_pair.hpp>
 #include <tt-metalium/experimental/metal2_host_api/program.hpp>
+#include "distributed/mesh_device_impl.hpp"
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // A test for checking watcher NOC sanitization.
@@ -156,7 +157,7 @@ void RunTestOnCore(
     auto zero_coord = distributed::MeshCoordinate(0, 0);
     auto device_range = distributed::MeshCoordinateRange(zero_coord, zero_coord);
     Program program = Program();
-    auto* device = mesh_device->get_devices()[0];
+    auto* device = mesh_device->impl().get_devices()[0];
     auto& cq = mesh_device->mesh_command_queue();
 
     CoreCoord virtual_core;
@@ -816,7 +817,7 @@ void RunTestEth(
     MeshWatcherFixture* fixture,
     const std::shared_ptr<distributed::MeshDevice>& mesh_device,
     watcher_features_t feature) {
-    auto* device = mesh_device->get_devices()[0];
+    auto* device = mesh_device->impl().get_devices()[0];
     if (fixture->IsSlowDispatch()) {
         GTEST_SKIP();
     }
@@ -833,7 +834,7 @@ void RunTestIEth(
     MeshWatcherFixture* fixture,
     const std::shared_ptr<distributed::MeshDevice>& mesh_device,
     watcher_features_t feature) {
-    auto* device = mesh_device->get_devices()[0];
+    auto* device = mesh_device->impl().get_devices()[0];
     // Run on the first ethernet core (if there are any).
     if (device->get_inactive_ethernet_cores().empty()) {
         log_info(LogTest, "Skipping this test since device has no active ethernet cores.");

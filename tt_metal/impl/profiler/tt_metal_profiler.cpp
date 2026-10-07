@@ -1235,12 +1235,12 @@ void ReadMeshDeviceProfilerResults(
         return;
     }
 
-    for (IDevice* device : mesh_device.get_devices()) {
+    for (auto* device : mesh_device.impl().get_devices()) {
         const std::vector<CoreCoord> virtual_cores = detail::getVirtualCoresForProfiling(device, state);
         detail::ReadDeviceProfilerResults(&mesh_device, device, virtual_cores, state, metadata);
     }
 
-    for (IDevice* device : mesh_device.get_devices()) {
+    for (auto* device : mesh_device.impl().get_devices()) {
         mesh_device.enqueue_to_thread_pool([device, state, &metadata]() {
             const std::vector<CoreCoord> virtual_cores = detail::getVirtualCoresForProfiling(device, state);
             detail::ProcessDeviceProfilerResults(device, virtual_cores, state, metadata);

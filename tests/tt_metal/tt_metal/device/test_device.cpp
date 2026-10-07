@@ -284,7 +284,7 @@ TEST_F(MeshDeviceFixture, TestDeviceToHostMemChannelAssignment) {
 // Test to ensure writing from 16B aligned L1 address to 16B aligned PCIe address works
 TEST_F(MeshDeviceFixture, TensixTestL1ToPCIeAt16BAlignedAddress) {
     auto mesh_device = this->devices_.at(0);
-    auto* device = mesh_device->get_devices()[0];
+    auto* device = mesh_device->impl().get_devices()[0];
     auto& cq = mesh_device->mesh_command_queue();
     distributed::MeshWorkload workload;
     auto zero_coord = distributed::MeshCoordinate(0, 0);
@@ -625,7 +625,7 @@ TEST_F(MeshDeviceFixture, SlowDispatchFullGridAccess) {
 
     for (const auto& mesh_device : devices_) {
         for (const auto& coord : distributed::MeshCoordinateRange(mesh_device->shape())) {
-            auto* device = mesh_device->get_device(coord[0], coord[1]);
+            auto* device = mesh_device->impl().get_device(coord);
             auto compute_grid = device->compute_with_storage_grid_size();
             auto logical_grid = device->logical_grid_size();
 

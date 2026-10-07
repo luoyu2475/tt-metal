@@ -7,6 +7,7 @@
 #include <tt-metalium/mesh_device.hpp>
 #include <tt-metalium/distributed_context.hpp>
 #include "mesh_device_impl.hpp"
+#include "mesh_device_view_impl.hpp"
 #include "mesh_command_queue.hpp"
 #include "fd_mesh_command_queue.hpp"
 #include "sd_mesh_command_queue.hpp"
@@ -46,7 +47,7 @@ DispatchContext& DispatchContext::get() {
 
 void DispatchContext::initialize_fast_dispatch(distributed::MeshDevice* mesh_device) {
     // If the mesh device is inactive, do not attempt to initialize fast dispatch.
-    if (mesh_device->impl().view_->get_devices().empty()) {
+    if (mesh_device->impl().view_->impl().get_devices().empty()) {
         return;
     }
 
@@ -124,7 +125,7 @@ void DispatchContext::initialize_fast_dispatch(distributed::MeshDevice* mesh_dev
 
 void DispatchContext::terminate_fast_dispatch(distributed::MeshDevice* mesh_device) {
     // If the mesh device is inactive, do not attempt to terminate fast dispatch.
-    if (mesh_device->impl().view_->get_devices().empty()) {
+    if (mesh_device->impl().view_->impl().get_devices().empty()) {
         return;
     }
 

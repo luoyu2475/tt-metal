@@ -25,6 +25,7 @@
 #include "debug_tools_test_utils.hpp"
 #include "gtest/gtest.h"
 #include "tests/tt_metal/tt_metal/eth/eth_test_common.hpp"
+#include "distributed/mesh_device_impl.hpp"
 
 using namespace tt;
 using namespace tt::tt_metal;
@@ -101,7 +102,7 @@ TEST_F(DevicePrintFixture, TwoWorkerKernelsSameProgram) {
 // Single program, two active ETH kernels (DM0) on two different ETH cores.
 TEST_F(DevicePrintFixture, TwoActiveEthKernelsSameProgram) {
     for (auto& mesh_device : this->devices_) {
-        auto* device = mesh_device->get_devices()[0];
+        auto* device = mesh_device->impl().get_devices()[0];
         const auto eth_cores = device->get_active_ethernet_cores(true);
         if (eth_cores.size() < 2) {
             log_info(
@@ -138,7 +139,7 @@ TEST_F(DevicePrintFixture, TwoWorkerProgramsBackToBack) {
 // Two programs run back-to-back on the same active ETH core / RISC.
 TEST_F(DevicePrintFixture, TwoActiveEthProgramsBackToBack) {
     for (auto& mesh_device : this->devices_) {
-        auto* device = mesh_device->get_devices()[0];
+        auto* device = mesh_device->impl().get_devices()[0];
         const auto eth_cores = device->get_active_ethernet_cores(true);
         if (eth_cores.empty()) {
             log_info(tt::LogTest, "Skipping device {} (no active ETH cores)", device->id());

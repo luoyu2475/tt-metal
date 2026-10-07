@@ -479,8 +479,6 @@ std::vector<IDevice*> MeshDeviceView::get_devices(const MeshCoordinateRange& ran
     return pimpl_->get_devices(range);
 }
 
-std::vector<IDevice*> MeshDeviceView::get_devices() const { return pimpl_->get_devices(); }
-
 std::vector<tt::tt_fabric::FabricNodeId> MeshDeviceView::get_fabric_node_ids(const MeshCoordinateRange& range) const {
     return pimpl_->get_fabric_node_ids(range);
 }
@@ -542,8 +540,6 @@ std::vector<MeshCoordinate> MeshDeviceView::get_ring_coordinates(const Shape2D& 
 
 std::vector<MeshCoordinate> MeshDeviceView::get_ring_coordinates() const { return pimpl_->get_ring_coordinates(); }
 
-std::vector<IDevice*> MeshDeviceView::get_line_devices() const { return pimpl_->get_line_devices(); }
-
 std::vector<IDevice*> MeshDeviceView::get_ring_devices() const { return pimpl_->get_ring_devices(); }
 
 std::vector<tt::tt_fabric::FabricNodeId> MeshDeviceView::get_line_fabric_node_ids() const {
@@ -557,9 +553,5 @@ std::vector<tt::tt_fabric::FabricNodeId> MeshDeviceView::get_ring_fabric_node_id
 bool MeshDeviceView::is_local(const MeshCoordinate& coord) const { return pimpl_->is_local(coord); }
 
 MeshCoordinateRange MeshDeviceView::get_local_mesh_coord_range() const { return pimpl_->get_local_mesh_coord_range(); }
-
-std::vector<MaybeRemote<IDevice*>>::const_iterator MeshDeviceView::begin() const { return pimpl_->begin(); }
-
-std::vector<MaybeRemote<IDevice*>>::const_iterator MeshDeviceView::end() const { return pimpl_->end(); }
 
 }  // namespace tt::tt_metal::distributed
