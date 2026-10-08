@@ -69,6 +69,9 @@ void zero_dispatch_s_realtime_profiler_msg_fields(
                    realtime_profiler_msgs::realtime_profiler_msg_t::Field::realtime_profiler_state));
     write_u32(
         base + factory.offset_of<realtime_profiler_msgs::realtime_profiler_msg_t>(
+                   realtime_profiler_msgs::realtime_profiler_msg_t::Field::sync_request));
+    write_u32(
+        base + factory.offset_of<realtime_profiler_msgs::realtime_profiler_msg_t>(
                    realtime_profiler_msgs::realtime_profiler_msg_t::Field::program_id_fifo_start));
     write_u32(
         base + factory.offset_of<realtime_profiler_msgs::realtime_profiler_msg_t>(

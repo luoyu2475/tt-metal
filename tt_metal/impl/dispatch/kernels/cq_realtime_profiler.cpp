@@ -58,7 +58,9 @@ __attribute__((noinline)) void realtime_profiler_read_and_enqueue(bool buffer_a)
     if (id != REALTIME_PROFILER_UNPROFILED_PROGRAM_HOST_ID) {
         ring_buffer->write_index++;
     }
+}
 
+FORCE_INLINE void acknowledge_dispatch_buffer() {
     const uint64_t dispatch_ack_addr = get_noc_addr(DISPATCH_CORE_NOC_X, DISPATCH_CORE_NOC_Y, DISPATCH_ACK_ADDR);
     noc_inline_dw_write(dispatch_ack_addr, 1);
 }
@@ -134,11 +136,13 @@ void kernel_main() {
             case REALTIME_PROFILER_STATE_PUSH_A:
                 realtime_profiler_read_and_enqueue(true);
                 rt_profiler_msg->realtime_profiler_state = REALTIME_PROFILER_STATE_IDLE;
+                acknowledge_dispatch_buffer();
                 break;
 
             case REALTIME_PROFILER_STATE_PUSH_B:
                 realtime_profiler_read_and_enqueue(false);
                 rt_profiler_msg->realtime_profiler_state = REALTIME_PROFILER_STATE_IDLE;
+                acknowledge_dispatch_buffer();
                 break;
 
             case REALTIME_PROFILER_STATE_TERMINATE: ring_buffer->terminate = 1; return;
