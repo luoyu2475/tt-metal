@@ -14,11 +14,9 @@ import pytest
 import torch
 import ttnn
 
-from models.common.utility_functions import is_blackhole
-
-blackhole_only = pytest.mark.skipif(
-    not is_blackhole() or os.environ.get("TT_METAL_SIMULATOR") is not None,
-    reason="SDPA precision recipes run on Blackhole hardware (the simulator disables SFPLOADMACRO)",
+recipe_hardware = pytest.mark.skipif(
+    ttnn.get_arch_name() not in ("blackhole", "wormhole_b0") or os.environ.get("TT_METAL_SIMULATOR") is not None,
+    reason="SDPA precision recipes run on Blackhole and Wormhole B0 hardware (the simulator disables SFPLOADMACRO)",
 )
 
 # Recipe and K/V storage. FAST inputs go through prepare_sdpa_input.
@@ -125,7 +123,9 @@ def check_attn_mask(device, variant, mask_kind):
         mask = torch.zeros(1, 1, 512, 1500)
         mask[..., 1100:] = -math.inf
     mask = mask.bfloat16()
-    actual = ttnn.to_torch(sdpa(device, variant, q, k, v, 256, 512, mask))
+    # Wormhole's smaller L1 does not fit the FP32-state recipes' Q256/K512 layout next to the mask CB.
+    q_chunk = 128 if variant in ("balanced", "accurate") and ttnn.get_arch_name() == "wormhole_b0" else 256
+    actual = ttnn.to_torch(sdpa(device, variant, q, k, v, q_chunk, 512, mask))
     assert l2_pct(actual, reference(q, k, v, mask)) < L2_PCT_BOUND[variant]
 
 

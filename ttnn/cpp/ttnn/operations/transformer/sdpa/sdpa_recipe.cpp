@@ -241,7 +241,9 @@ PrecisionPolicy resolve_recipe_policy(
     TT_FATAL(
         !scale || *scale == 1.0f / std::sqrt(head_dim),
         "SDPA recipes currently require the default 1/sqrt(head_dim) scale represented as FP32");
-    TT_FATAL(q.device()->arch() == tt::ARCH::BLACKHOLE, "SDPA precision recipes support Blackhole only");
+    TT_FATAL(
+        q.device()->arch() == tt::ARCH::BLACKHOLE || q.device()->arch() == tt::ARCH::WORMHOLE_B0,
+        "SDPA precision recipes support Blackhole and Wormhole B0 only");
     // A recipe fixes every compute-config field, so an explicit config would be silently ignored.
     TT_FATAL(!compute_kernel_config, "Specify either an SDPA precision recipe or a compute kernel config, not both");
     TT_FATAL(
@@ -316,7 +318,9 @@ static std::vector<Tensor> run_recipe_segments(
         const Tensor* tensor = &input;
         TT_FATAL(tensor->storage_type() == StorageType::DEVICE, "SDPA recipes require device inputs");
         TT_FATAL(tensor->device() == q.device(), "SDPA recipe inputs must belong to the same device");
-        TT_FATAL(tensor->device()->arch() == tt::ARCH::BLACKHOLE, "SDPA recipes currently support Blackhole only");
+        TT_FATAL(
+            tensor->device()->arch() == tt::ARCH::BLACKHOLE || tensor->device()->arch() == tt::ARCH::WORMHOLE_B0,
+            "SDPA recipes support Blackhole and Wormhole B0 only");
         TT_FATAL(tensor->layout() == Layout::TILE, "SDPA recipes require tiled inputs");
         TT_FATAL(tensor->memory_config() == DRAM_MEMORY_CONFIG, "SDPA recipes require interleaved DRAM inputs");
         TT_FATAL(tensor->logical_shape().rank() == 4, "SDPA recipes require rank-four inputs");
