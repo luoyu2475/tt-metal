@@ -300,9 +300,20 @@ ttnn::device_operation::ProgramArtifacts PermuteDeviceOperation::MultiCoreBlocke
         .advanced_options = {.num_runtime_varargs = 3 * N},
     };
 
-    bool fp32_dest_acc_en = cb_data_format_output == tt::DataFormat::Float32 ||
-                            cb_data_format_output == tt::DataFormat::Int32 ||
-                            cb_data_format_output == tt::DataFormat::UInt32;
+    // UInt8 needs 32-bit Dest on WH/BH.
+    bool fp32_dest_acc_en =
+        cb_data_format_output == tt::DataFormat::Float32 || cb_data_format_output == tt::DataFormat::Int32 ||
+        cb_data_format_output == tt::DataFormat::UInt32 || cb_data_format_output == tt::DataFormat::UInt8;
+    // Issue #58106: this factory's compute kernel garbles UInt8 output in 32-bit Dest mode on
+    // Blackhole. ttnn::permute decomposes all UInt8 RM BH callers that would hit this factory
+    // into sub-permutations on correct code paths (MultiCoreRowInvariant + WH-swap-via-TILE), so
+    // this factory should never be reached with UInt8 on BH. Guard against future callers that
+    // bypass the decomposition.
+    TT_FATAL(
+        !(cb_data_format == tt::DataFormat::UInt8 && input_tensor.device()->arch() == tt::ARCH::BLACKHOLE),
+        "UInt8 ROW_MAJOR permute via MultiCoreBlockedGeneric is unsupported on Blackhole; callers "
+        "must go through ttnn::permute / ttnn::transpose, which cast UInt8 up to UInt32 before "
+        "reaching this factory. See issue #58106.");
     // Style B compute config: build ComputeHardwareConfig directly, matching the legacy
     // ComputeConfigDescriptor{.fp32_dest_acc_en=...} (all other fields at legacy defaults).
     ComputeHardwareConfig compute_cfg{.enable_32_bit_dest = fp32_dest_acc_en};

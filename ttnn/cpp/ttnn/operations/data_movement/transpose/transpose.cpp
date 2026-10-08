@@ -240,6 +240,27 @@ ttnn::Tensor transpose_impl(
     const std::optional<MemoryConfig>& memory_config_arg,
     float pad_value = 0.0f) {
     {
+        // BH UInt8 ROW_MAJOR transpose that touches the last dim routes through prim::permute →
+        // MultiCoreBlockedGeneric → broken compute kernel (see issue #58106). The permute entry
+        // point handles the UInt8→UInt32→permute→UInt32→UInt8 cast workaround, but some branches
+        // here call ttnn::prim::permute directly (not ttnn::permute), bypassing it. Mirror the
+        // cast workaround here. UInt32 datums fill 32-bit Dest cells natively and are correct.
+        if (input_tensor.dtype() == DataType::UINT8 && input_tensor.layout() == Layout::ROW_MAJOR &&
+            input_tensor.device() != nullptr && input_tensor.device()->arch() == tt::ARCH::BLACKHOLE) {
+            const auto& ls = input_tensor.logical_shape();
+            const uint32_t r = ls.rank();
+            if (r >= 2) {
+                uint32_t n1 = ls.get_normalized_index(dim1);
+                uint32_t n2 = ls.get_normalized_index(dim2);
+                if (n1 == r - 1 || n2 == r - 1) {
+                    auto as_u32 = ttnn::typecast(input_tensor, DataType::UINT32);
+                    auto out = transpose_impl(as_u32, dim1, dim2, memory_config_arg, pad_value);
+                    return ttnn::typecast(out, DataType::UINT8);
+                }
+            }
+        }
+    }
+    {
         // Irregular RM block/width sharded hits a pages_per_shard misread in noc_async_*_sharded.
         // Unshard until the kernel-side helpers handle irregular RM geometries.
         const bool rm = input_tensor.layout() == Layout::ROW_MAJOR;

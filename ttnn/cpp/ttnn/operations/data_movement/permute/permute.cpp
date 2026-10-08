@@ -33,6 +33,24 @@ ttnn::Tensor permute_impl(
     float pad_value = 0.0f) {
     uint32_t rank = a.logical_shape().rank();
 
+    // BH UInt8 ROW_MAJOR permute: the MultiCoreBlockedGeneric factory + transpose_xw_rm_single_tile_size.cpp
+    // compute kernel garbles output when fp32_dest_acc_en=true (required on BH for 32-bit Dest with
+    // UInt8). The bug is specific to 8-bit datums packed into 32-bit Dest cells; UInt32 datums fill
+    // the cells natively and go through the same compute kernel correctly.
+    //
+    // Workaround — cast UInt8 → UInt32, permute, cast back. Values round-trip losslessly (UInt8
+    // fits in UInt32). Applies only to permutations that would otherwise reach the broken factory
+    // (dims.back() != rank-1); last-dim-stays permutations hit MultiCoreRowInvariant and are fine.
+    //
+    // See issue #58106 for the LLK-layer bug this works around.
+    if (a.dtype() == DataType::UINT8 && a.layout() == Layout::ROW_MAJOR && a.device() != nullptr &&
+        a.device()->arch() == tt::ARCH::BLACKHOLE && dims.size() >= 1 &&
+        dims.back() != static_cast<uint32_t>(dims.size() - 1)) {
+        auto as_u32 = ttnn::typecast(a, DataType::UINT32);
+        auto permuted = permute_impl(as_u32, dims, output_mem_config, pad_value);
+        return ttnn::typecast(permuted, DataType::UINT8);
+    }
+
     // Irregular RM block/width sharded hits a pages_per_shard misread in noc_async_*_sharded.
     // Input-side guard only; irregular output shapes are safe (writers emit full rows, compute_output_specs synthesises
     // a valid spec).
