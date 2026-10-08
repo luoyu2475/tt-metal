@@ -113,6 +113,9 @@ struct MeshTopologyMatch {
     std::string name;
     size_t idx = 0;
     MappingResult<LogicalChipId, GroupingChipId> mapping;
+    // The MGD->PGD constraints this match was solved under, kept so the PSD placement gate can ask for
+    // another orientation of the same variant when the first one does not sit on the PSD's hosts.
+    MappingConstraints<LogicalChipId, GroupingChipId> constraints;
 };
 
 // Helper function to build adjacency graph from MGD mesh instance's device topology
@@ -1602,7 +1605,7 @@ ValidGroupingsMap PhysicalGroupingDescriptor::get_valid_groupings_for_mgd(
                         ConnectionValidationMode::STRICT,
                         true);
                     if (mapping_result.success) {
-                        best_matches_topology.push_back({name, idx, std::move(mapping_result)});
+                        best_matches_topology.push_back({name, idx, std::move(mapping_result), constraints});
                     } else {
                         log_debug(
                             tt::LogFabric,
@@ -1682,25 +1685,88 @@ ValidGroupingsMap PhysicalGroupingDescriptor::get_valid_groupings_for_mgd(
                     }
                     const ConnectionValidationMode gate_validation_mode =
                         instance_relaxed ? ConnectionValidationMode::RELAXED : ConnectionValidationMode::STRICT;
-                    for (const auto& match : best_matches_topology) {
-                        const GroupingInfo committed_candidate = make_committed_grouping(match);
-                        MappingConstraints<LogicalChipId, tt::tt_metal::AsicID> solve_constraints;
-                        const auto placements = enumerate_flat_grouping_embeddings(
-                            committed_candidate,
-                            *psd_physical_graph,
-                            *physical_system_descriptor,
-                            /*max_solutions=*/1,
-                            solve_constraints,
-                            gate_validation_mode);
-                        if (!placements.empty()) {
+                    // One topology match is one orientation of the variant (which PGD slot each MGD chip takes).
+                    // The gate below places THAT orientation, with the MGD's host split carried along as a
+                    // same-host rule against the PSD's hosts. When the PGD declares hosts that place on the PSD,
+                    // configure_mgd_pgd_host_alignment_constraints already steered the match into an orientation
+                    // whose ranks sit on those hosts, and the first orientation is the right one. Without that
+                    // geometry -- a PGD with no HOSTS level, or Phase 2 under TT_VISIBLE_DEVICES, where each rank
+                    // discovers only its own chips, so no declared host places and the PSD's "hosts" are the
+                    // ranks' chip sets -- the match is oriented blind, and an orientation whose rank halves do
+                    // not coincide with the PSD hosts fails the gate even though another orientation of the same
+                    // variant would place. Phase 1 (full view) committed exactly such a variant and wrote the
+                    // rank bindings from it; Phase 2 then found "no grouping variants" for the same mesh. So
+                    // when the first orientation fails for a variant that has no PGD host geometry, ask the
+                    // solver for the variant's other orientations (bounded) and keep the first that places.
+                    constexpr std::size_t kMaxOrientationRetries = 64;
+                    const std::size_t psd_host_groups =
+                        collect_psd_host_groups(*psd_physical_graph, *physical_system_descriptor).size();
+                    for (auto& match : best_matches_topology) {
+                        GroupingInfo committed_candidate = make_committed_grouping(match);
+                        auto places_on_psd = [&](const GroupingInfo& candidate) {
+                            MappingConstraints<LogicalChipId, tt::tt_metal::AsicID> solve_constraints;
+                            return !enumerate_flat_grouping_embeddings(
+                                        candidate,
+                                        *psd_physical_graph,
+                                        *physical_system_descriptor,
+                                        /*max_solutions=*/1,
+                                        solve_constraints,
+                                        gate_validation_mode)
+                                        .empty();
+                        };
+                        bool placed = places_on_psd(committed_candidate);
+                        const bool blind_orientation = !placed && psd_host_groups > 1 &&
+                                                       committed_candidate.mesh_node_to_pgd_host_group.empty() &&
+                                                       !committed_candidate.mesh_node_to_host_group.empty();
+                        std::size_t orientations_tried = 0;
+                        if (blind_orientation) {
+                            const GroupingInfo& variant = mesh_flat_groupings.at(match.name)[match.idx];
+                            TopologyMappingEnumerationSession<LogicalChipId, GroupingChipId> orientations(
+                                mgd_grouping_info.adjacency_graph,
+                                variant.adjacency_graph,
+                                match.constraints,
+                                ConnectionValidationMode::STRICT,
+                                /*quiet_mode=*/true,
+                                TopologyMappingSolverEngine::Auto,
+                                /*unique_shapes=*/false);
+                            if (orientations.started()) {
+                                orientations.exclude_mapping(match.mapping.target_to_global);
+                                for (; orientations_tried < kMaxOrientationRetries && !placed; ++orientations_tried) {
+                                    auto alternative = orientations.next();
+                                    if (!alternative.success) {
+                                        break;
+                                    }
+                                    MeshTopologyMatch reoriented{match.name, match.idx, std::move(alternative), {}};
+                                    GroupingInfo candidate = make_committed_grouping(reoriented);
+                                    if (places_on_psd(candidate)) {
+                                        match.mapping = std::move(reoriented.mapping);
+                                        committed_candidate = std::move(candidate);
+                                        placed = true;
+                                    }
+                                }
+                            }
+                        }
+                        if (placed) {
+                            if (orientations_tried > 0) {
+                                log_info(
+                                    tt::LogFabric,
+                                    "PGD '{}' matched MGD '{}' but its first orientation did not sit on the PSD's "
+                                    "hosts; placed with another orientation after {} retr{}",
+                                    committed_candidate.name,
+                                    mgd_grouping_info.name,
+                                    orientations_tried,
+                                    orientations_tried == 1 ? "y" : "ies");
+                            }
                             best_matches_psd_placed.push_back(match);
                         } else {
                             log_debug(
                                 tt::LogFabric,
                                 "PGD '{}' matched MGD '{}' topologically but could not be placed on PSD "
-                                "(no ASIC embedding found)",
+                                "(no ASIC embedding found{})",
                                 committed_candidate.name,
-                                mgd_grouping_info.name);
+                                mgd_grouping_info.name,
+                                orientations_tried > 0 ? fmt::format(" in {} orientation(s)", orientations_tried + 1)
+                                                       : std::string{});
                         }
                     }
                 } else {

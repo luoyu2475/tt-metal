@@ -4415,4 +4415,56 @@ TEST(PhysicalGroupingDescriptorTestsHostSplit, HostSplitIsHeldAgainstEveryPlaceA
     EXPECT_EQ(std::count(committed_seatings.begin(), committed_seatings.end(), second_quadrant), 1);
 }
 
+// Phase 2 under TT_VISIBLE_DEVICES: every rank discovers only its own chips, so the PSD's "hosts" are the
+// ranks' chip sets and no declared PGD host places on it (here: a declared 4x8 host over a 4x4 PSD). With no
+// PGD host geometry the MGD<->PGD topology match is oriented blind, and under a RING dimension the orientation
+// it returns first need not split the ring where the PSD hosts do. Phase 1 (full view) committed that variant
+// and wrote the rank bindings from it, so Phase 2 must place the same variant: the gate has to try the
+// variant's other orientations instead of reporting "no grouping variants". One of the two column splits
+// below is the one the first orientation does not match, whichever orientation the solver returns first.
+TEST(PhysicalGroupingDescriptorTestsHostSplit, BlindOrientationIsRetriedUntilRanksSitOnPsdHosts) {
+    std::vector<std::pair<int, int>> column_wraps;
+    for (int r = 0; r < 4; ++r) {
+        column_wraps.emplace_back(r * 4 + 3, r * 4);
+    }
+    const std::vector<std::vector<LogicalChipId>> ranks = {{0, 1, 4, 5, 8, 9, 12, 13}, {2, 3, 6, 7, 10, 11, 14, 15}};
+    for (const auto& host_of_col :
+         {std::vector<std::string>{"hostA", "hostA", "hostB", "hostB"},
+          std::vector<std::string>{"hostB", "hostA", "hostA", "hostB"}}) {
+        std::vector<std::string> host_of_asic;
+        for (int r = 0; r < 4; ++r) {
+            for (int c = 0; c < 4; ++c) {
+                host_of_asic.push_back(host_of_col[c]);
+            }
+        }
+        auto psd = build_grid_mock_psd(4, 4, host_of_asic, 2, column_wraps);
+        // The declared host is wider than anything this PSD holds, so it never places: no rounds attribution,
+        // no host-edge variants, no MGD<->PGD host alignment -- the Phase 2 partial-view situation.
+        const auto pgd = pinned_pgd(4, 4, {rect_host(0, 4, 0, 8)});
+        const auto mgd = single_mesh_mgd(4, 4, 1, 2, "LINE, RING");
+
+        ValidGroupingsMap valid;
+        ASSERT_NO_THROW(valid = pgd.get_valid_groupings_for_mgd(mgd, psd))
+            << "split " << host_of_col[0] << host_of_col[1] << host_of_col[2] << host_of_col[3];
+        const auto committed = committed_layouts(valid);
+        ASSERT_FALSE(committed.empty());
+        const auto asic_at_slot = asic_by_slot(psd);
+        for (const GroupingInfo& grouping : committed) {
+            EXPECT_TRUE(grouping.mesh_node_to_pgd_host_group.empty()) << "the declared host must not have placed";
+            std::map<uint32_t, std::set<std::string>> hosts_of_rank;
+            for (const auto& [chip, rank] : grouping.mesh_node_to_host_group) {
+                const auto& position = grouping.mesh_node_to_asic_position.at(chip);
+                hosts_of_rank[rank].insert(
+                    psd.get_host_name_for_asic(asic_at_slot.at({*position.first, *position.second})));
+            }
+            ASSERT_EQ(hosts_of_rank.size(), 2u);
+            for (const auto& [rank, hosts] : hosts_of_rank) {
+                EXPECT_EQ(hosts.size(), 1u)
+                    << "committed orientation seats rank " << rank << " on " << hosts.size() << " PSD hosts";
+            }
+        }
+        expect_ranks_survive_placement(psd, pgd, mgd, ranks);
+    }
+}
+
 }  // namespace tt::tt_fabric::fabric_router_tests
