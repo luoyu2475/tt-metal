@@ -33,8 +33,8 @@
  * Same CB protocol as sdpa_inner_loop_step: scores, chunk sums, O and l banks, the max ping-pong.
  */
 // Ring kernels: unpack only issues and waits here, so its copy is size-optimized (their unpack image is the one
-// nearest the kernel config buffer limit).
-#if defined(TRISC_UNPACK) && defined(SDPA_RECIPE_RING)
+// nearest the kernel config buffer limit). So are Wormhole's, whose images are larger.
+#if defined(TRISC_UNPACK) && (defined(SDPA_RECIPE_RING) || defined(ARCH_WORMHOLE))
 #define SDPA_FUSED_CHUNK_ATTR __attribute__((noinline, optimize("Os")))
 #else
 #define SDPA_FUSED_CHUNK_ATTR __attribute__((noinline))
