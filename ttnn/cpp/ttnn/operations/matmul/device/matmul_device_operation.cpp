@@ -2058,8 +2058,36 @@ void validate_matmul_mcast1d_config(
 
         TT_FATAL(!optional_bias.has_value(), "{}: Bias is not supported when using gather_in0.", config_name);
     } else {
+        // Bind sharded in0 to the 1D mcast factory's own `matmul_core_rect` anchored at the
+        // sub-device start; device-grid-only check lets a mismatched shard grid map core_i to the wrong shard.
         const auto device_grid_1d = input_tensor_a.device()->compute_with_storage_grid_size();
-        check_tensor_in_grid(input_tensor_a, device_grid_1d);
+        if (input_tensor_a.is_sharded()) {
+            CoreCoord start_core = {0, 0};
+            if (attributes.sub_device_id.has_value()) {
+                auto sd_worker_cores = input_tensor_a.device()->worker_cores(
+                    tt::tt_metal::HalProgrammableCoreType::TENSIX, attributes.sub_device_id.value());
+                start_core = sd_worker_cores.bounding_box().start_coord;
+            }
+            const auto& cwsg = program_config.compute_with_storage_grid_size;
+            CoreRangeSet matmul_core_rect(
+                CoreRange(start_core, CoreCoord(start_core.x + cwsg.x - 1, start_core.y + cwsg.y - 1)));
+            const uint32_t M =
+                operations::matmul::utilities::get_M_dim(a_shape_padded, in0_tile, program_config.fuse_batch);
+            const uint32_t num_shards = tt::div_up(M, program_config.per_core_M);
+            const auto expected = tt::tt_metal::num_cores_to_corerangeset_in_subcoregrids(
+                start_core, num_shards, matmul_core_rect, /*row_major=*/true);
+            TT_FATAL(
+                input_tensor_a.shard_spec().value().grid == expected,
+                "{}: sharded in0 grid must equal the factory's work grid anchored at {} within the "
+                "compute_with_storage_grid_size={} rectangle; got shard grid={}, expected={}",
+                config_name,
+                start_core,
+                cwsg,
+                input_tensor_a.shard_spec().value().grid,
+                expected);
+        } else {
+            check_tensor_in_grid(input_tensor_a, device_grid_1d);
+        }
         if (!attributes.global_cb.has_value()) {
             check_tensor_in_grid(input_tensor_b, device_grid_1d);
         }
