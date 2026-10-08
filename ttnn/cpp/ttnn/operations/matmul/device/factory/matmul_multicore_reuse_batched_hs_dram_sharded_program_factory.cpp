@@ -515,10 +515,13 @@ static ttnn::device_operation::ProgramArtifacts create_program_batch_sharded_spe
     uint32_t in0_subblock_num_tiles = out_subblock_h * in0_block_w;
     uint32_t out_subblock_num_tiles = out_subblock_h * out_subblock_w;
 
+    // Fp32 partials reloaded cross-block need UnpackToDest to avoid TF32-rounding on SrcA (bias+fp32 skipped: needs reload-alias).
+    const bool fp32_partials_reload =
+        fp32_dest_acc_en && interm0_data_format == tt::DataFormat::Float32 && !bias_tensor.has_value();
     compute_hw.unpack_modes = {
         {IN0_DFB, UnpackMode::UnpackToSrc},
         {IN1_DFB, UnpackMode::UnpackToSrc},
-        {INTERMED0_DFB, UnpackMode::UnpackToSrc},
+        {INTERMED0_DFB, fp32_partials_reload ? UnpackMode::UnpackToDest : UnpackMode::UnpackToSrc},
     };
     if (bias_tensor.has_value()) {
         compute_hw.unpack_modes.insert({BIAS_DFB, UnpackMode::UnpackToSrc});
